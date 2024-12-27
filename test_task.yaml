@@ -1,0 +1,71 @@
+---
+
+- name: Update JDK 1.8 to OpenJDK 17, install nginx and share index.html
+  hosts: all
+  become: yes
+  vars_files:
+    - secrets.yaml
+
+  vars:
+    openjdk_17_download_url: "https://download.java.net/java/GA/jdk17/0d483333a00540d886896bac774ff48b/35/GPL/openjdk-17_linux-x64_bin.tar.gz"
+    openjdk_17_tar_gz: "openjdk-17_linux-x64_bin.tar.gz"
+
+  tasks:
+
+  - name: Download OpenJDK 17 
+    ansible.builtin.get_url:
+      url: "{{ openjdk_17_download_url }}"
+      dest: "/tmp/{{ openjdk_17_tar_gz }}"
+
+  - name: Remove existing JDK
+    ansible.builtin.dnf:
+      name: java-1.8.0-oracle
+      state: absent  
+ 
+  - name: Install OpenJDK 17
+    ansible.builtin.shell: |
+      cd /tmp
+      tar xvf "{{ openjdk_17_tar_gz }}"
+      mkdir /usr/java/
+      mv jdk-17 /usr/java/jdk-17 
+
+  - name: Add Java JDK 17 binary to PATH
+    ansible.builtin.lineinfile:
+      path: /etc/profile.d/java.sh
+      create: yes
+      line: 'export PATH=/usr/java/jdk-17/bin:$PATH'
+
+  - name: Install nginx
+    ansible.builtin.dnf:
+      name: nginx
+      state: latest
+
+  - name: Start and enable nginx
+    ansible.builtin.service:
+      name: nginx
+      state: started
+      enabled: yes
+
+  - name: Get the IP address of the server
+    ansible.builtin.set_fact:
+      server_ip: "{{ ansible_default_ipv4.address }}"
+
+  - name: Create index.html with server IP
+    ansible.builtin.copy:
+      dest: /usr/share/nginx/html/index.html
+      content: |
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Server Info</title>
+        </head>
+        <body>
+            <h1>Server IP: {{ server_ip }}</h1>
+        </body>
+        </html>
+      mode: '0644'
+
+  - name: Restart nginx to apply changes
+    service:
+      name: nginx
+      state: restarted
